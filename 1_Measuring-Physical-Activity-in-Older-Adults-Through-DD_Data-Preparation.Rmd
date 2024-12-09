@@ -1,0 +1,809 @@
+---
+title: "Measuring Physical Activity in Older Adults through Data Donation: Consent Rates, Donation Success, & Bias"
+author: "Florian Keusch"
+date: "2024-12-08"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+subtitle: Data preparation
+---
+
+Data can be found at https://doi.org/10.57990/5ez3-br33
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "C:\\Flug\\NIMLAS\\Data")
+```
+
+# Install and load required packages
+```{r, warning=FALSE, message=FALSE}
+if (!require(haven)) install.packages("haven")
+library(haven)
+
+if (!require(dplyr)) install.packages("dplyr")
+library(dplyr)
+```
+
+# Load data
+```{r}
+df_survey <- read_sav("L_NIMLAS_1.0p.sav") 
+df_port <- read_sav("L_NIMLAS_PortVariables_1.0p.sav")
+```
+
+# Merge data
+```{r}
+df <- merge(df_survey, df_port, by = "nomem_encr")
+```
+
+# Sociodemographics
+```{r}
+## Gender
+df <- df %>%
+  mutate(gender = factor(
+    case_when((geslacht == 1) ~ "Male",
+              (geslacht == 2) ~ "Female",
+              (geslacht == 3) ~ "Other"
+    ),
+    levels = c("Female", "Male", "Other")
+  ))
+summary(df$gender)
+
+## Age
+summary(df$gebjaar)
+df <- df %>%
+  mutate(age = as.numeric(2023 - gebjaar))
+summary(df$age)
+hist(df$age)
+
+df <- df %>%
+  mutate(age_groups = factor(
+    case_when((age < 55) ~ "50-54 years",
+              (age >= 55 &
+                 age < 60) ~ "55-59 years",
+              (age >= 60 &
+                 age < 65) ~ "60-64 years",
+              (age >= 65 &
+                 age < 70) ~ "65-69 years",
+              (age >= 70 &
+                 age < 75) ~ "70-74 years",
+              (age >= 75 &
+                 age < 80) ~ "75-79 years",
+              (age >= 80) ~ "80 years or older"
+    )
+  ))
+summary(df$age_groups)
+
+## HH size
+summary(df$aantalhh)
+df <- df %>%
+  mutate(hh_size = factor(
+    case_when((aantalhh == 1) ~ "One person HH",
+              (aantalhh == 2) ~ "Two person HH",
+              (aantalhh > 2) ~ "Three and more person HH"
+    ),
+    levels = c("One person HH", "Two person HH",
+               "Three and more person HH")
+  ))
+summary(df$hh_size)
+
+## Urabnicity
+summary(df$sted)
+df <- df %>%
+  mutate(urban = factor(
+    case_when((sted == 1) ~ "Very strongly urban",
+              (sted == 2) ~ "Strongly urban",
+              (sted == 3) ~ "Moderately urban",
+              (sted == 4) ~ "Little urban",
+              (sted == 5) ~ "Not urban",
+              .default = NA
+    ),
+    levels = c(
+      "Very strongly urban",
+      "Strongly urban",
+      "Moderately urban",
+      "Little urban",
+      "Not urban"
+    )
+  ))
+summary(df$urban)
+
+## Employment status
+summary(df$belbezig)
+
+### Create employment variable with only three categories
+df <- df %>%
+  mutate(employ3 = factor(
+    case_when((belbezig >= 1 & belbezig <= 3) ~ "Employed for pay",
+              ((belbezig >= 4 &
+                 belbezig <= 7) |
+                 belbezig == 9 |
+                 belbezig == 10)  ~ "Unemployed/Retired/Disabled",
+              ((belbezig == 8) |
+                 (belbezig >= 11 & belbezig <= 13)) ~
+                "Unpaid work, incl. housework",
+              .default = NA
+    ),
+    levels = c(
+      "Employed for pay",
+      "Unpaid work, incl. housework",
+      "Unemployed/Retired/Disabled"
+    )
+  ))
+summary(df$employ3)
+
+## Personal net income
+summary(df$nettocat)
+hist(df$nettocat)
+df <- df %>%
+  mutate(income = factor(
+    case_when((nettocat == 0 | (is.na(nettocat))) ~ "No income/NA",
+              (nettocat == 1 |
+                 nettocat == 2) ~ "EUR 1000 or less",
+              (nettocat == 3) ~ "EUR 1001 to EUR 1500",
+              (nettocat == 4) ~ "EUR 1501 to EUR 2000",
+              (nettocat == 5) ~ "EUR 2001 to EUR 2500",
+              (nettocat == 6) ~ "EUR 2501 to EUR 3000",
+              (nettocat >= 7 &
+                 nettocat <= 12) ~ "More than EUR 3000"
+    ),
+    levels = c(
+      "EUR 1000 or less",
+      "EUR 1001 to EUR 1500",
+      "EUR 1501 to EUR 2000",
+      "EUR 2001 to EUR 2500",
+      "EUR 2501 to EUR 3000",
+      "More than EUR 3000",
+      "No income/NA"
+    )
+  ))
+summary(df$income)
+
+## Education
+summary(df$oplcat)
+hist(df$oplcat)
+
+### Create education variable with only three categories
+df <- df %>%
+  mutate(educ3 = factor(
+    case_when((oplcat == 1 | oplcat == 2) ~ "Low",
+              (oplcat == 3 |
+                 oplcat == 4) ~ "Medium",
+              (oplcat == 5 |
+                 oplcat == 6) ~ "High",
+              .default = NA
+    ),
+    levels = c("Low", "Medium", "High")
+  ))
+summary(df$educ3)
+```
+
+# Health
+```{r}
+## Self-rated health
+summary(df$Q1)
+
+df <- df %>% 
+  dplyr::rename(srh_num = Q1)
+
+### Create SRH variable with only three categories (i.e., combining "Bad" and "Moderate" and "Very good" and "Excellent")
+df <- df %>%
+  mutate(srh3 = factor(
+    case_when((srh_num == 1 | srh_num == 2) ~ "Bad/Moderate",
+              (srh_num == 3) ~ "Good",
+              (srh_num == 4 | srh_num == 5) ~ "Very good/Excellent",
+              .default = NA
+    ),
+    levels = c("Bad/Moderate", "Good", "Very good/Excellent")
+  ))
+summary(df$srh3)
+
+## Limitations in activities
+summary(df$Q2)
+summary(df$Q3)
+summary(df$Q4)
+
+df <- df %>% 
+  dplyr::rename(lim_daily_act_num = Q2)
+df <- df %>% 
+  dplyr::rename(lim_social_act_num = Q3)
+df <- df %>% 
+  dplyr::rename(lim_work_num = Q4)
+
+### Create limitations variables with only two categories (i.e., "Not at all" vs. "Hardly", "A bit", "Quite a lot", and "Very much")
+#### Build function for recoding variables 
+create_factor_variable_act2 <-
+  function(df, column, new_column_name) {
+    df <- df %>%
+      dplyr::mutate({
+        {
+          new_column_name
+        }
+      } := factor(
+        case_when((.data[[column]] == 1) ~ "Not at all",
+                  (.data[[column]] >= 2) ~ "Hardly/A bit/Quite a lot/Very much",
+                  .default = NA
+        ),
+        levels = c("Not at all", "Hardly/A bit/Quite a lot/Very much")
+      ))
+    return(df)
+  }
+
+#### Recode limitation variables
+df <- create_factor_variable_act2(df, "lim_daily_act_num", "lim_daily_act2")
+df <-
+  create_factor_variable_act2(df, "lim_social_act_num", "lim_social_act2")
+df <- create_factor_variable_act2(df, "lim_work_num", "lim_work2")
+
+summary(df$lim_daily_act2)
+summary(df$lim_social_act2)
+summary(df$lim_work2)
+
+## Trouble performing certain activities
+summary(df$Q5_1)
+summary(df$Q5_2)
+summary(df$Q5_3)
+summary(df$Q5_4)
+summary(df$Q5_5)
+summary(df$Q5_6)
+summary(df$Q5_7)
+summary(df$Q5_8)
+summary(df$Q5_9)
+summary(df$Q5_10)
+
+df <- df %>% 
+  dplyr::rename(diff_100m_num = Q5_1)
+df <- df %>% 
+  dplyr::rename(diff_sitting_num = Q5_2)
+df <- df %>% 
+  dplyr::rename(diff_getup_num = Q5_3)
+df <- df %>% 
+  dplyr::rename(diff_multflights_num = Q5_4)
+df <- df %>% 
+  dplyr::rename(diff_oneflight_num = Q5_5)
+df <- df %>% 
+  dplyr::rename(diff_allfours_num = Q5_6)
+df <- df %>% 
+  dplyr::rename(diff_aboveshoulder_num = Q5_7)
+df <- df %>% 
+  dplyr::rename(diff_movingobjects_num = Q5_8)
+df <- df %>% 
+  dplyr::rename(diff_lifting_num = Q5_9)
+df <- df %>% 
+  dplyr::rename(diff_pickup_num = Q5_10)
+
+### Create a dichotomous Trouble performing certain activities variable (i.e., "Without any trouble" vs. "With some trouble", "With a lot of trouble", "Only with an aid or the help of others" and "Not")
+#### Build function for recoding variables 
+create_factor_variable_trouble2 <-
+  function(df, column, new_column_name) {
+    df <- df %>%
+      dplyr::mutate({
+        {
+          new_column_name
+        }
+      } := factor(
+        case_when((.data[[column]] == 1) ~ "Without any trouble",
+                  (.data[[column]] == 2 |
+                  .data[[column]] == 3 |
+                     .data[[column]] == 4 |
+                     .data[[column]] == 5) ~ "Not without trouble",
+                  .default = NA
+        ),
+        levels = c(
+          "Without any trouble",
+          "Not without trouble"
+        )
+      ))
+    return(df)
+  }
+
+#### Recode variables
+df <- create_factor_variable_trouble2(df, "diff_100m_num", "diff_100m2")
+df <- create_factor_variable_trouble2(df, "diff_sitting_num", "diff_sitting2")
+df <- create_factor_variable_trouble2(df, "diff_getup_num", "diff_getup2")
+df <- create_factor_variable_trouble2(df, "diff_multflights_num", "diff_multflights2")
+df <- create_factor_variable_trouble2(df, "diff_oneflight_num", "diff_oneflight2")
+df <- create_factor_variable_trouble2(df, "diff_allfours_num", "diff_allfours2")
+df <-
+  create_factor_variable_trouble2(df, "diff_aboveshoulder_num", "diff_aboveshoulder2")
+df <-
+  create_factor_variable_trouble2(df, "diff_movingobjects_num", "diff_movingobjects2")
+df <- create_factor_variable_trouble2(df, "diff_lifting_num", "diff_lifting2")
+df <- create_factor_variable_trouble2(df, "diff_pickup_num", "diff_pickup2")
+
+summary(df$diff_100m2)
+summary(df$diff_sitting2)
+summary(df$diff_getup2)
+summary(df$diff_multflights2)
+summary(df$diff_oneflight2)
+summary(df$diff_allfours2)
+summary(df$diff_aboveshoulder2)
+summary(df$diff_movingobjects2)
+summary(df$diff_lifting2)
+summary(df$diff_pickup2)
+
+## Chronic illness
+summary(df$Q6)
+
+### Build function for recoding 1/2 variables into yes/no variables
+create_factor_variable_noyes <-
+  function(df, column, new_column_name) {
+    df <- df %>%
+      dplyr::mutate({
+        {
+          new_column_name
+        }
+      } := factor(
+        case_when((.data[[column]] == 1) ~ "Yes",
+                  (.data[[column]] == 2) ~ "No",
+                  .default = NA
+        )
+      ))
+    return(df)
+  }
+
+### Recode chronic illness variable
+df <- create_factor_variable_noyes(df, "Q6", "chronic")
+
+summary(df$chronic)
+
+## BMI
+summary(df$Q21)
+hist(df$Q21)
+
+df <- df %>%
+  mutate(height = case_when((Q21 > 100) ~ Q21 / 100, # Setting cases <100cm to NA
+                            .default = NA))
+summary(df$height)
+hist(df$height)
+
+summary(df$Q22)
+hist(df$Q22)
+df <- df %>%
+  mutate(weight = case_when((Q22 >= 40 & Q22 <= 200) ~ Q22, # Setting cases <40kg and >200kg to NA
+                            .default = NA))
+summary(df$weight)
+hist(df$weight)
+df <- df %>%
+  mutate(bmi = weight / (height ^ 2))
+summary(df$bmi)
+hist(df$bmi)
+
+### Median split BMI
+### Create function for median split
+create_median_split_variable <- function(df, old_var, old_var_median, new_var) {
+  median_value <- median(df[[old_var]], na.rm = TRUE)
+  
+  df <- df %>%
+    dplyr::mutate(
+      {{ old_var_median }} := median_value,
+      {{ new_var }} := factor(case_when(
+        .data[[old_var]] > median_value ~ "Above median",
+        .data[[old_var]] <= median_value ~ "Below median",
+        TRUE ~ NA_character_
+      ))
+    ) %>%
+    dplyr::select(-{{ old_var_median }})
+  
+  return(df)
+}
+
+### Recode BMI variable
+df <- create_median_split_variable(df, "bmi", bmi_median, bmi2)
+```
+
+# Physical activity
+```{r}
+## No of days with strenuous physical activity
+summary(df$Q7)
+hist(df$Q7)
+df <- df %>% 
+  mutate(days_stren_physical_act = Q7)
+
+### Median split No of days with strenuous physical activity
+df <- create_median_split_variable(df, "days_stren_physical_act", days_stren_physical_act_median, days_stren_physical_act2)
+summary(df$days_stren_physical_act2)
+
+## No of days with moderate physical activity
+summary(df$Q9)
+hist(df$Q9)
+df <- df %>% 
+  mutate(days_mod_physical_act = Q9)
+
+### Median split No of days with moderate physical activity
+df <- create_median_split_variable(df, "days_mod_physical_act", days_mod_physical_act_median, days_mod_physical_act2)
+summary(df$days_mod_physical_act2)
+
+## No of days with walking
+summary(df$Q11)
+hist(df$Q11)
+df <- df %>% 
+  mutate(days_walking = Q11)
+
+### Median split No of days with walking
+df <- create_median_split_variable(df, "days_walking", days_walking_median, days_walking2)
+summary(df$days_walking2)
+
+## No of days with biking
+summary(df$Q13)
+hist(df$Q13)
+df <- df %>% 
+  mutate(days_biking = Q13)
+
+### Median split No of days with biking
+df <- create_median_split_variable(df, "days_biking", days_biking_median, days_biking2)
+summary(df$days_biking2)
+
+## No of days with running
+summary(df$Q15)
+hist(df$Q15)
+df <- df %>% 
+  mutate(days_running = Q15)
+
+### Median split No of days with biking
+df <- create_median_split_variable(df, "days_running", days_running_median, days_running2)
+summary(df$days_running2)
+
+## Time sedentary
+summary(df$Q17_1)
+summary(df$Q17_2)
+df <- df %>% 
+  mutate(min_sedentary = Q17_1*60 + Q17_2)
+summary(df$min_sedentary)
+hist(df$min_sedentary)
+df <- df %>% 
+  mutate(h_sedentary = min_sedentary/60)
+summary(df$h_sedentary)
+hist(df$h_sedentary)
+
+### Median split time sedentary
+df <- create_median_split_variable(df, "h_sedentary", h_sedentary_median, h_sedentary2)
+summary(df$h_sedentary2)
+
+## Outside yesterday
+summary(df$Q18)
+df <- create_factor_variable_noyes(df, "Q18", "outdoors")
+summary(df$outdoors)
+
+## Distance traveled yesterday
+summary(df$Q19)
+df <- df %>% 
+  mutate(km_traveled = Q19)
+```
+
+# Smartphone-related characteristics
+```{r}
+## Smartphone ownership
+summary(df$Q23)
+summary(df$Q23twijfel)
+df <- df %>%
+  mutate(smart_own = factor(
+    case_when((Q23 == 1 | Q23twijfel == 1) ~ "Owns smartphone",
+              (Q23 >= 2 |
+                 Q23twijfel == 2) ~ "Does not own smartphone",
+              .default = NA
+    )
+  ))
+summary(df$smart_own)
+
+## OS
+summary(df$Q24_1)
+df <- df %>%
+  mutate(smart_os = factor(
+    case_when((Q24_1 == 1) ~ "iPhone",
+              (Q24_1 == 2) ~ "Android",
+              (Q24_1 >= 3 &
+                 Q24_1 <= 6) ~ "Other",
+              .default = NA
+    ),
+    levels = c("iPhone", "Android", "Other")
+  ))
+summary(df$smart_os)
+
+### Owns iPhone/Android phone (prerequisite for data donation)
+df <- df %>%
+  mutate(smart_iphoneandroid = factor(
+    case_when((smart_os == "iPhone" |
+                 smart_os == "Android") ~ "iPhone or Android",
+              (smart_os == "Other" | (is.na(smart_os))) ~ "Other/No smartphone"
+    ),
+    levels = c("Other/No smartphone", "iPhone or Android")
+  ))
+summary(df$smart_iphoneandroid)
+
+## Samsung
+summary(df$Q24_2)
+df <- df %>%
+  mutate(smart_samsung = factor(
+    case_when((Q24_2 == 1) ~ "Samsung phone",
+              (Q24_2 == 2) ~ "Other Android phone",
+              .default = NA
+    ),
+    levels = c("Samsung phone", "Other Android phone")
+  ))
+
+summary(df$smart_samsung)
+
+## Samsung Health user
+summary(df$Q24_3)
+df <- df %>%
+  mutate(smart_samsunghealth = factor(
+    case_when((Q24_3 == 1) ~ "Uses Samsung Health app",
+              (Q24_3 == 2) ~ "Does not use Samsung Health app",
+              .default = NA
+    ),
+    levels = c("Uses Samsung Health app",
+               "Does not use Samsung Health app")
+  ))
+summary(df$smart_samsunghealth)
+
+## Smartphone activities
+summary(df$Q25a)
+summary(df$Q25b)
+summary(df$Q25c)
+summary(df$Q25d)
+summary(df$Q25e)
+summary(df$Q25f)
+summary(df$Q25g)
+summary(df$Q25h)
+summary(df$Q25i)
+summary(df$Q25j)
+summary(df$Q25k)
+summary(df$Q25l)
+summary(df$Q25m)
+summary(df$Q25n)
+summary(df$Q25o)
+
+df <-
+  create_factor_variable_noyes(df, "Q25a", "smart_act_messaging")
+df <- create_factor_variable_noyes(df, "Q25b", "smart_act_websites")
+df <- create_factor_variable_noyes(df, "Q25c", "smart_act_email")
+df <- create_factor_variable_noyes(df, "Q25d", "smart_act_photo")
+df <-
+  create_factor_variable_noyes(df, "Q25e", "smart_act_makingvideo")
+df <-
+  create_factor_variable_noyes(df, "Q25f", "smart_act_smpassive")
+df <- create_factor_variable_noyes(df, "Q25g", "smart_act_smactive")
+df <- create_factor_variable_noyes(df, "Q25h", "smart_act_shopping")
+df <- create_factor_variable_noyes(df, "Q25i", "smart_act_banking")
+df <- create_factor_variable_noyes(df, "Q25j", "smart_act_newapps")
+df <- create_factor_variable_noyes(df, "Q25k", "smart_act_gps")
+df <-
+  create_factor_variable_noyes(df, "Q25l", "smart_act_bluetooth")
+df <- create_factor_variable_noyes(df, "Q25m", "smart_act_calling")
+df <- create_factor_variable_noyes(df, "Q25n", "smart_act_games")
+df <-
+  create_factor_variable_noyes(df, "Q25o", "smart_act_streaming")
+
+summary(df$smart_act_messaging)
+summary(df$smart_act_websites)
+summary(df$smart_act_email)
+summary(df$smart_act_photo)
+summary(df$smart_act_makingvideo)
+summary(df$smart_act_smpassive)
+summary(df$smart_act_smactive)
+summary(df$smart_act_shopping)
+summary(df$smart_act_banking)
+summary(df$smart_act_newapps)
+summary(df$smart_act_gps)
+summary(df$smart_act_bluetooth)
+summary(df$smart_act_calling)
+summary(df$smart_act_games)
+summary(df$smart_act_streaming)
+
+### Create sum score of smartphone activities
+df<- df %>%
+  rowwise() %>%
+  dplyr::mutate(smart_act_no = sum(c_across(
+    smart_act_messaging:smart_act_streaming
+  ) == "Yes")) %>%
+  ungroup()
+summary(df$smart_act_no)
+hist(df$smart_act_no)
+```
+
+# Privacy & Trust
+```{r}
+## General privacy concern
+summary(df$Q26)
+df <- df %>% 
+  dplyr::rename(privacy_num = Q26)
+
+## Perceived privacy of information
+summary(df$Q27a)
+summary(df$Q27b)
+summary(df$Q27c)
+summary(df$Q27d)
+
+df <- df %>% 
+  dplyr::rename(private_location_num = Q27a)
+df <- df %>% 
+  dplyr::rename(private_travel_num = Q27b)
+df <- df %>% 
+  dplyr::rename(private_PA_num = Q27c)
+df <- df %>% 
+  dplyr::rename(private_health_num = Q27d)
+
+## Trust in various organizations
+summary(df$Q28a)
+summary(df$Q28b)
+summary(df$Q28c)
+summary(df$Q28d)
+summary(df$Q28e)
+summary(df$Q28f)
+summary(df$Q28g)
+summary(df$Q28h)
+
+df <- df %>% 
+  dplyr::rename(trust_marketresearch_num = Q28a)
+df <- df %>% 
+  dplyr::rename(trust_scientist_num = Q28b)
+df <- df %>% 
+  dplyr::rename(trust_government_num = Q28c)
+df <- df %>% 
+  dplyr::rename(trust_cbs_num = Q28d)
+df <- df %>% 
+  dplyr::rename(trust_apps_num = Q28e)
+df <- df %>% 
+  dplyr::rename(trust_onlinestores_num = Q28f)
+df <- df %>% 
+  dplyr::rename(trust_socialmedia_num = Q28g)
+df <- df %>% 
+  dplyr::rename(trust_bigtech_num = Q28h)
+```
+
+# Data Donation
+```{r}
+## Willingness to donate
+### Reported willingness to donate Apple Health
+summary(df$Q29_AH_CONSENT)
+df <-
+  create_factor_variable_noyes(df, "Q29_AH_CONSENT", "ah_willing")
+summary(df$ah_willing)
+
+### Reported willingness to donate Google Location History
+summary(df$Q29_GLH_CONSENT)
+df <-
+  create_factor_variable_noyes(df, "Q29_GLH_CONSENT", "glh_willing")
+summary(df$glh_willing)
+
+### Reported willingness to donate Samsung Health
+summary(df$Q29_SH_CONSENT)
+df <-
+  create_factor_variable_noyes(df, "Q29_SH_CONSENT", "sh_willing")
+summary(df$sh_willing)
+
+### Reported willingness to donate any data
+df <- df %>%
+  mutate(any_willing = factor(case_when((ah_willing == "Yes" |
+                                           glh_willing == "Yes" |
+                                           sh_willing == "Yes") ~ "Yes",
+                                        (ah_willing == "No" |
+                                           glh_willing == "No" |
+                                           sh_willing == "No") ~ "No",
+                                        .default = "No"
+  )
+  ))
+summary(df$any_willing)
+
+### Was willingness question asked?
+df <- df %>%
+  mutate(asked_willing = factor(
+    case_when((!is.na(ah_willing) | 
+                 (!is.na(glh_willing)) |
+                 (!is.na(sh_willing))) ~ "Willingness question asked",
+              .default = "Willingness question not asked"
+    ),
+    levels = c(
+      "Willingness question not asked",
+      "Willingness question asked"
+    )
+  ))
+summary(df$asked_willing)
+
+### What willingness question was asked?
+df <- df %>%
+  mutate(what_willing_na = factor(
+    case_when((!is.na(ah_willing)) ~ "Apple Health willingness question",
+              (!is.na(glh_willing)) ~ "Google Location History willingness question",
+              (!is.na(sh_willing)) ~ "Samsung Health willingness question",
+              .default = NA
+    ),
+    levels = c(
+      "Apple Health willingness question",
+      "Google Location History willingness question",
+      "Samsung Health willingness question"
+    )
+  ))
+summary(df$what_willing_na)
+
+## Was DDP preview shown?
+summary(df$ShowExample)
+
+### Create function to make 1/0 variables into yes/no variables
+create_factor_variable_01 <-
+  function(df, column, new_column_name) {
+    df <- df %>%
+      dplyr::mutate({
+        {
+          new_column_name
+        }
+      } := factor(
+        case_when((.data[[column]] == 0) ~ "No",
+                  (.data[[column]] == 1) ~ "Yes",
+                  .default = NA),
+        levels = c("No",
+                   "Yes")
+      ))
+    return(df)
+  }
+
+### Recode Show variable
+df <- create_factor_variable_01(df, "ShowExample", "ShowExample")
+summary(df$ShowExample)
+
+## Started data donation
+summary(df$started_donation)
+df <- create_factor_variable_01(df, "started_donation", "started_donation")
+summary(df$started_donation)
+
+## Finished data donation (including declined)
+summary(df$finished_donation)
+df <- create_factor_variable_01(df, "finished_donation", "finished_donation")
+summary(df$finished_donation)
+
+## Was donation declined after seeing DDP?
+summary(df$declined)
+df <- create_factor_variable_01(df, "declined", "declined")
+summary(df$declined)
+
+## Create variable for not declined DDPs from start of donation
+df <- df %>%
+  mutate(DDP_available = factor(case_when((declined == "No") ~ "Yes",
+                                             .default = "No"),
+                                   levels = c("No", "Yes")))
+
+summary(df$DDP_available)
+```
+
+# Clean data set
+```{r}
+## Drop respondents who did not get to the smartphone questions
+df <- df %>% 
+  filter(!is.na(smart_own))
+
+## Select necessary variables
+df <- df %>%
+  select(
+    nomem_encr,
+    ShowExample,
+    privacy_num:trust_bigtech_num,
+    started_donation:gender,
+    age_groups:chronic,
+    bmi2,
+    days_stren_physical_act2,
+    days_mod_physical_act2,
+    days_walking2,
+    days_biking2,
+    days_running2,
+    h_sedentary2,
+    outdoors,
+    smart_iphoneandroid,
+    smart_act_no,
+    any_willing:DDP_available
+  )
+
+# Drop unused levels in factors
+df <- df %>% 
+  droplevels()
+
+## Clean work space
+rm(list = setdiff(ls(), "df"))
+```
+
+
+# Save data
+```{r}
+## Save data
+save.image(file = "df.RData")
+```
