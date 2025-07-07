@@ -1,7 +1,7 @@
 ---
 title: "Measuring Physical Activity in Older Adults through Data Donation: Consent Rates, Donation Success, & Bias"
 author: "Florian Keusch"
-date: "2024-12-08"
+date: "2025-07-07"
 output:
   html_document:
     df_print: paged
@@ -13,7 +13,7 @@ Run Measuring-Physical-Activity-in-Older-Adults-Through-DD_1_Data-Preparation.Rm
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-knitr::opts_knit$set(root.dir = "C:\\Flug\\NIMLAS\\Data")
+knitr::opts_knit$set(root.dir = "U:\\Mannheim\\Grants\\NIMLAS\\Data")
 ```
 
 ```{r, echo=FALSE}
@@ -28,6 +28,7 @@ if (!require(chisq.posthoc.test)) install.packages("chisq.posthoc.test")
 if (!require(car)) install.packages("car")
 if (!require(forcats)) install.packages("forcats")
 if (!require(haven)) install.packages("haven")
+if (!require(psych)) install.packages("psych")
 
 library(plyr)
 library(dplyr)
@@ -39,6 +40,7 @@ library(chisq.posthoc.test)
 library(car)
 library(forcats)
 library(haven)
+library(psych)
 ```
 
 ```{r echo=FALSE}
@@ -47,272 +49,275 @@ load("df.RData")
 ```
 
 # Descriptives
+
 ```{r echo=FALSE}
-## Sociodemographics
-### Gender
-summary(df$gender)
-prop.table(table(df$gender))
+## Table B1. Descriptive statistics of categorical variables
+### Function that creates table with counts and percentages of specific variables
+summarize_categorical <- function(data, vars, save_to_file = NULL) {
+  var_cat <- c()
+  label <- c()
+  
+  for (var in vars) {
+    # Check if variable exists
+    if (!var %in% names(data)) {
+      warning(paste("Variable", var, "not found in data. Skipping."))
+      next
+    }
+    
+    # Create table and proportions
+    tab <- table(data[[var]])
+    prop <- prop.table(tab)
+    
+    for (cat in names(tab)) {
+      var_cat <- c(var_cat, paste0(var, ":", cat))
+      label <- c(label, paste0(tab[cat], " (", sprintf("%.1f", prop[cat] * 100), "%)"))
+    }
+  }
+  
+  # Combine into data frame
+  final_table <- data.frame(
+    var_cat = var_cat,
+    label = label,
+    stringsAsFactors = FALSE
+  )
+  
+  # Optionally save to file
+  if (!is.null(save_to_file)) {
+    write.table(final_table, file = save_to_file, row.names = FALSE, sep = ";")
+    message("Table saved to: ", save_to_file)
+  }
+  
+  return(final_table)
+}
 
-### Age
-summary(df$age_groups)
-prop.table(table(df$age_groups))
+### Function that creates table with NAs of specific variables
+count_na <- function(data, vars, save_to_file = NULL) {
+  # Check if variables exist
+  missing_vars <- setdiff(vars, names(data))
+  if (length(missing_vars) > 0) {
+    stop(paste("These variables are not in the data frame:", paste(missing_vars, collapse = ", ")))
+  }
+  
+  # Use explicit namespaces to avoid conflicts
+  na_counts <- sapply(data[vars], function(x) sum(is.na(x)))
+  
+  result <- data.frame(
+    variable = vars,
+    na_count = na_counts,
+    row.names = NULL
+  )
+  
+  # Optionally save to file
+  if (!is.null(save_to_file)) {
+    write.table(result, file = save_to_file, row.names = FALSE, sep = ";")
+    message("Table saved to: ", save_to_file)
+  }
+  
+  return(result)
+}
 
-### HH size
-summary(df$hh_size)
-prop.table(table(df$hh_size))
+### Sociodemographics
+cat_vars_soc <- c("gender",
+                  "age_groups",
+                  "hh_size",
+                  "urban",
+                  "employ3",
+                  "income",
+                  "educ3")
 
-### Urabnicity
-summary(df$urban)
-prop.table(table(df$urban))
+summary_table_soc <- summarize_categorical(df, cat_vars_soc)
+summarize_categorical(df, cat_vars_soc, save_to_file = "descriptives_soc.csv")
 
-### Employment status
-summary(df$employ3)
-prop.table(table(df$employ3))
+summary_table_NA_soc <- count_na(df, cat_vars_soc)
+count_na(df, cat_vars_soc, save_to_file = "NAs_soc.csv")
 
-### Personal net income
-summary(df$income)
-prop.table(table(df$income))
+### Privacy & trust
+cat_vars_priv <- c("privacy_fac",
+              "private_location_fac",
+              "private_travel_fac",
+              "private_PA_fac",
+              "private_health_fac",
+              "trust_marketresearch_fac",
+              "trust_scientist_fac",
+              "trust_government_fac",
+              "trust_cbs_fac",
+              "trust_apps_fac",
+              "trust_onlinestores_fac",
+              "trust_bigtech_fac",
+              "trust_pub_ter",
+              "trust_priv_ter")
 
-### Education
-summary(df$educ3)
-prop.table(table(df$educ3))
+summary_table_priv <- summarize_categorical(df, cat_vars_priv)
+summarize_categorical(df, cat_vars_priv, save_to_file = "descriptives_priv.csv")
 
-## Health
-### Self-rated health
-summary(df$srh3)
-prop.table(table(df$srh3))
+summary_table_NA_priv <- count_na(df, cat_vars_priv)
+count_na(df, cat_vars_priv, save_to_file = "NAs_priv.csv")
 
-### Limitations in activities
-#### Daily activities
-summary(df$lim_daily_act2)
-prop.table(table(df$lim_daily_act2))
+### Health
+cat_vars_health <- c("srh5",
+              "srh3",
+              "chronic",
+              "bmi4",
+              "bmi3",
+              "lim_daily_act5",
+              "lim_social_act5",
+              "lim_work5",
+              "lim_ter",
+              "diff_100m5",
+              "diff_sitting5",
+              "diff_getup5",
+              "diff_multflights5",
+              "diff_oneflight5",
+              "diff_allfours5",
+              "diff_aboveshoulder5",
+              "diff_movingobjects5",
+              "diff_lifting5",
+              "diff_pickup5",
+              "diff_ter")
 
-#### Social activities
-summary(df$lim_social_act2)
-prop.table(table(df$lim_social_act2))
+summary_table_health <- summarize_categorical(df, cat_vars_health)
+summarize_categorical(df, cat_vars_health, save_to_file = "descriptives_health.csv")
 
-#### Work
-summary(df$lim_work2)
-prop.table(table(df$lim_work2))
+summary_table_NA_health <- count_na(df, cat_vars_health)
+count_na(df, cat_vars_health, save_to_file = "NAs_health.csv")
 
-### Trouble performing certain activities
-#### Walking 100m
-summary(df$diff_100m2)
-prop.table(table(df$diff_100m2))
+### PA
+cat_vars_pa <- c("days_stren_physical_act_ter",
+              "days_mod_physical_act_ter",
+              "days_walking_ter",
+              "days_biking_ter",
+              "days_running_ter",
+              "h_sedentary_ter",
+              "outdoors")
 
-#### Sitting for 2hs
-summary(df$diff_sitting2)
-prop.table(table(df$diff_sitting2))
+summary_table_pa <- summarize_categorical(df, cat_vars_pa)
+summarize_categorical(df, cat_vars_pa, save_to_file = "descriptives_pa.csv")
 
-#### Getting up
-summary(df$diff_getup2)
-prop.table(table(df$diff_getup2))
+summary_table_NA_pa <- count_na(df, cat_vars_pa)
+count_na(df, cat_vars_pa, save_to_file = "NAs_pa.csv")
 
-#### Walking several flights of stairs
-summary(df$diff_multflights2)
-prop.table(table(df$diff_multflights2))
+## Table B1. Descriptive statistics of categorical variables
+### Trust
+summary(df$trust_pub_index)
+sd(df$trust_pub_index, na.rm=T)
 
-#### Walking one flight of stairs
-summary(df$diff_oneflight2)
-prop.table(table(df$diff_oneflight2))
+summary(df$trust_priv_index)
+sd(df$trust_priv_index, na.rm=T)
 
-#### Crouch, kneel, and crawl
-summary(df$diff_allfours2)
-prop.table(table(df$diff_allfours2))
+### Health
+#### Limitations in activities
+summary(df$lim_index)
+sd(df$lim_index, na.rm=T)
 
-#### Reach above shoulder
-summary(df$diff_aboveshoulder2)
-prop.table(table(df$diff_aboveshoulder2))
+#### Difficulties performing certain activities
+summary(df$diff_index)
+sd(df$diff_index, na.rm=T)
 
-#### Moving larger objects
-summary(df$diff_movingobjects2)
-prop.table(table(df$diff_movingobjects2))
+#### BMI
+summary(df$bmi)
+sd(df$bmi, na.rm=T)
 
-#### Lifting up/carying things 5kg+
-summary(df$diff_lifting2)
-prop.table(table(df$diff_lifting2))
+### Physical activity
+#### Strenuous physical activity
+summary(df$days_stren_physical_act_num)
+sd(df$days_stren_physical_act_num, na.rm=T)
 
-#### Picking up small things
-summary(df$diff_pickup2)
-prop.table(table(df$diff_pickup2))
+#### Moderate physical activity
+summary(df$days_mod_physical_act_num)
+sd(df$days_mod_physical_act_num, na.rm=T)
 
-### Chronic illness
-summary(df$chronic)
-prop.table(table(df$chronic))
-
-### BMI
-summary(df$bmi2)
-prop.table(table(df$bmi2))
-
-## Physical activity
-### Stenuous physical activity
-summary(df$days_stren_physical_act2)
-prop.table(table(df$days_stren_physical_act2))
-
-### Moderate physical activity
-summary(df$days_mod_physical_act2)
-prop.table(table(df$days_mod_physical_act2))
-
-### Walking
-summary(df$days_walking2)
-prop.table(table(df$days_walking2))
-
-### Biking
-summary(df$days_biking2)
-prop.table(table(df$days_biking2))
-
-### Running
-summary(df$days_running2)
-prop.table(table(df$days_running2))
-
-### Sedentary behavior
-summary(df$h_sedentary2)
-prop.table(table(df$h_sedentary2))
-
-### Going outdoors yesterday
-summary(df$outdoors)
-prop.table(table(df$outdoors))
-
-## Smartphone
-### Smartphone is iPhone or Android phone
-summary(df$smart_iphoneandroid)
-prop.table(table(df$smart_iphoneandroid))
+#### Walking
+summary(df$days_walking_num)
+sd(df$days_walking_num, na.rm=T)
 
 ### Smartphone activities
-summary(df$smart_act_no)
-prop.table(table(df$smart_act_no))
+summary(df$smart_act_no[df$smart_iphoneandroid == "iPhone or Android"])
+sd(df$smart_act_no[df$smart_iphoneandroid == "iPhone or Android"], na.rm=T)
 
-## Privacy & Trust
-### General privacy concerns
-summary(df$privacy_num)
+#### Biking
+summary(df$days_biking_num)
+sd(df$days_biking_num, na.rm=T)
 
-### Perceived privacy of information
-#### Current location
-summary(df$private_location_num)
+#### Running
+summary(df$days_running_num)
+sd(df$days_running_num, na.rm=T)
 
-#### Travel behavior
-summary(df$private_travel_num)
-
-#### Physical activity
-summary(df$private_PA_num)
-
-#### Health
-summary(df$private_health_num)
-
-### Trust in institutions
-#### Public opinion pollsters and market research agencies
-summary(df$trust_marketresearch_num)
-
-#### Scientists
-summary(df$trust_scientist_num)
-
-#### Dutch governmental institutions
-summary(df$trust_government_num)
-
-#### Statistics Netherlands
-summary(df$trust_cbs_num)
-
-#### Companies developing apps
-summary(df$trust_apps_num)
-
-#### Online stores
-summary(df$trust_onlinestores_num)
-
-#### Social media
-summary(df$trust_socialmedia_num)
-
-#### Technology companies
-summary(df$trust_bigtech_num)
-
-## Data Donation
-### Was willingness question asked?
-summary(df$asked_willing)
-prop.table(table(df$asked_willing))
-
-### What willingness question was asked?
-summary(df$what_willing_na)
-prop.table(table(df$what_willing_na))
-
-### Willingness to donate data
-summary(df$any_willing)
-prop.table(table(df$any_willing))
-
-### DDP preview shown
-summary(df$ShowExample)
-prop.table(table(df$ShowExample))
-
-### DPP received and not declined
-summary(df$DDP_available)
-prop.table(table(df$DDP_available))
+#### Sedentary behavior
+summary(df$h_sedentary)
+sd(df$h_sedentary, na.rm=T)
 ```
 
 # Analysis
+
 ```{r}
-## Participation steps
+## Participation steps (Table 2)
 ### Owning an iPhone or Android smartphone
 addmargins(table(df$smart_iphoneandroid))
 prop.table(table(df$smart_iphoneandroid))
 
 ### Asked for willingness to donate data
 #### Entire sample
+addmargins(table(df$asked_willing))
 prop.table(table(df$asked_willing))
 
 #### Conditional on owning iPhone or Android smartphone
+addmargins(table(df$asked_willing[df$smart_iphoneandroid == "iPhone or Android"]))
 prop.table(table(df$asked_willing[df$smart_iphoneandroid == "iPhone or Android"]))
 
 ### Reported willingness
-addmargins(table(df$any_willing))
-
 #### Entire sample
+addmargins(table(df$any_willing))
 prop.table(table(df$any_willing))
 
 #### Conditional on being asked for willingness
+addmargins(table(df$any_willing[df$asked_willing == "Willingness question asked"])) 
 prop.table(table(df$any_willing[df$asked_willing == "Willingness question asked"])) 
 
 ### Started data donation
-addmargins(table(df$started_donation))
-
 #### Entire sample
+addmargins(table(df$started_donation))
 prop.table(table(df$started_donation))
 
 #### Conditional on reporting willingness
+addmargins(table(df$started_donation[df$any_willing == "Yes"])) 
 prop.table(table(df$started_donation[df$any_willing == "Yes"])) 
 
 ### DDP available
-addmargins(table(df$DDP_available))
-
 #### Full sample
+addmargins(table(df$DDP_available))
 prop.table(table(df$DDP_available))
 
 #### Conditional on starting donation
+addmargins(table(df$DDP_available[df$started_donation == "Yes"])) 
 prop.table(table(df$DDP_available[df$started_donation == "Yes"])) 
 
-### Preparing data frame for figures
-df_percentages_all <- df %>%
-  summarise(
-    Full_sample = mean(
-      smart_iphoneandroid == "iPhone or Android" |
-        smart_iphoneandroid != "iPhone or Android"
-    ),
-    Owns_iPhoneAndroid = mean(smart_iphoneandroid == "iPhone or Android"),
-    Asked_for_willingness = mean(asked_willing == "Willingness question asked"),
-    Willingness_to_data_donation = mean(any_willing == "Yes"),
-    Started_donation = mean(started_donation == "Yes"),
-    Donated_DDP = mean(DDP_available == "Yes")
-  ) %>%
-  pivot_longer(cols = everything(),
-               names_to = "Variable",
-               values_to = "Percentage") %>%
-  mutate(Type = factor("Full sample"))
+## Participation steps by type of health data requested (Figure 2)
+### Willingness by type of health data (conditional on being asked)
+addmargins(table(df$any_willing, df$what_willing_na))
+prop.table(table(df$any_willing, df$what_willing_na), 2)
 
+### Data donation started by type of health data
+#### Conditional on being asked
+addmargins(table(df$started_donation, df$what_willing_na))
+prop.table(table(df$started_donation, df$what_willing_na), 2)
+
+#### Conditional on reporting willingness
+addmargins(table(df$started_donation[df$any_willing == "Yes"], df$what_willing_na[df$any_willing == "Yes"]), 2)
+prop.table(table(df$started_donation[df$any_willing == "Yes"], df$what_willing_na[df$any_willing == "Yes"]), 2)
+
+### DDP available by type of health data
+#### Conditional on being asked
+addmargins(table(df$DDP_available, df$what_willing_na))
+prop.table(table(df$DDP_available, df$what_willing_na), 2)
+
+#### Conditional on starting donation
+addmargins(table(df$DDP_available[df$started_donation == "Yes"], df$what_willing_na[df$started_donation == "Yes"]), 2)
+prop.table(table(df$DDP_available[df$started_donation == "Yes"], df$what_willing_na[df$started_donation == "Yes"]), 2) 
+
+### Preparing data frame for figures
 df_percentages_ah <- df %>%
   filter(what_willing_na == "Apple Health willingness question") %>%
   summarise(
-    Full_sample = mean(
-      smart_iphoneandroid == "iPhone or Android" |
-        smart_iphoneandroid != "iPhone or Android"
-    ),
-    Owns_iPhoneAndroid = mean(smart_iphoneandroid == "iPhone or Android"),
     Asked_for_willingness = mean(asked_willing == "Willingness question asked"),
     Willingness_to_data_donation = mean(any_willing == "Yes"),
     Started_donation = mean(started_donation == "Yes"),
@@ -326,11 +331,6 @@ df_percentages_ah <- df %>%
 df_percentages_glh <- df %>%
   filter(what_willing_na == "Google Location History willingness question") %>%
   summarise(
-    Full_sample = mean(
-      smart_iphoneandroid == "iPhone or Android" |
-        smart_iphoneandroid != "iPhone or Android"
-    ),
-    Owns_iPhoneAndroid = mean(smart_iphoneandroid == "iPhone or Android"),
     Asked_for_willingness = mean(asked_willing == "Willingness question asked"),
     Willingness_to_data_donation = mean(any_willing == "Yes"),
     Started_donation = mean(started_donation == "Yes"),
@@ -344,11 +344,6 @@ df_percentages_glh <- df %>%
 df_percentages_sh <- df %>%
   filter(what_willing_na == "Samsung Health willingness question") %>%
   summarise(
-    Full_sample = mean(
-      smart_iphoneandroid == "iPhone or Android" |
-        smart_iphoneandroid != "iPhone or Android"
-    ),
-    Owns_iPhoneAndroid = mean(smart_iphoneandroid == "iPhone or Android"),
     Asked_for_willingness = mean(asked_willing == "Willingness question asked"),
     Willingness_to_data_donation = mean(any_willing == "Yes"),
     Started_donation = mean(started_donation == "Yes"),
@@ -359,30 +354,9 @@ df_percentages_sh <- df %>%
                values_to = "Percentage") %>%
   mutate(Type = factor("Samsung Health"))
 
-df_counts_all <- df %>%
-  summarise(
-    Full_sample = sum(
-      smart_iphoneandroid == "iPhone or Android" |
-        smart_iphoneandroid != "iPhone or Android"
-    ),
-    Owns_iPhoneAndroid = sum(smart_iphoneandroid == "iPhone or Android"),
-    Asked_for_willingness = sum(asked_willing == "Willingness question asked"),
-    Willingness_to_data_donation = sum(any_willing == "Yes"),
-    Started_donation = sum(started_donation == "Yes"),
-    Donated_DDP = sum(DDP_available == "Yes")
-  ) %>%
-  pivot_longer(cols = everything(),
-               names_to = "Variable",
-               values_to = "Count")
-
 df_counts_ah <- df %>%
   filter(what_willing_na == "Apple Health willingness question") %>%
   summarise(
-    Full_sample = sum(
-      smart_iphoneandroid == "iPhone or Android" |
-        smart_iphoneandroid != "iPhone or Android"
-    ),
-    Owns_iPhoneAndroid = sum(smart_iphoneandroid == "iPhone or Android"),
     Asked_for_willingness = sum(asked_willing == "Willingness question asked"),
     Willingness_to_data_donation = sum(any_willing == "Yes"),
     Started_donation = sum(started_donation == "Yes"),
@@ -395,11 +369,6 @@ df_counts_ah <- df %>%
 df_counts_glh <- df %>%
   filter(what_willing_na == "Google Location History willingness question") %>%
   summarise(
-    Full_sample = sum(
-      smart_iphoneandroid == "iPhone or Android" |
-        smart_iphoneandroid != "iPhone or Android"
-    ),
-    Owns_iPhoneAndroid = sum(smart_iphoneandroid == "iPhone or Android"),
     Asked_for_willingness = sum(asked_willing == "Willingness question asked"),
     Willingness_to_data_donation = sum(any_willing == "Yes"),
     Started_donation = sum(started_donation == "Yes"),
@@ -412,11 +381,6 @@ df_counts_glh <- df %>%
 df_counts_sh <- df %>%
   filter(what_willing_na == "Samsung Health willingness question") %>%
   summarise(
-    Full_sample = sum(
-      smart_iphoneandroid == "iPhone or Android" |
-        smart_iphoneandroid != "iPhone or Android"
-    ),
-    Owns_iPhoneAndroid = sum(smart_iphoneandroid == "iPhone or Android"),
     Asked_for_willingness = sum(asked_willing == "Willingness question asked"),
     Willingness_to_data_donation = sum(any_willing == "Yes"),
     Started_donation = sum(started_donation == "Yes"),
@@ -426,8 +390,6 @@ df_counts_sh <- df %>%
                names_to = "Variable",
                values_to = "Count")
 
-df_summary_all <-
-  merge(df_percentages_all, df_counts_all, by = "Variable")
 df_summary_ah <-
   merge(df_percentages_ah, df_counts_ah, by = "Variable")
 df_summary_glh <-
@@ -435,85 +397,21 @@ df_summary_glh <-
 df_summary_sh <-
   merge(df_percentages_sh, df_counts_sh, by = "Variable")
 df_summary <-
-  rbind(df_summary_all,
-        df_summary_ah,
+  rbind(df_summary_ah,
         df_summary_glh,
         df_summary_sh)
 
 df_summary <- df_summary %>%
   mutate(Variable = revalue(
     Variable,
-    c(
-      "Full_sample" = "Full sample",
-      "Owns_iPhoneAndroid" = "Owns iPhone or \nAndroid phone",
-      "Asked_for_willingness" = "Willingness question \nasked",
+    c("Asked_for_willingness" = "Willingness question \nasked",
       "Willingness_to_data_donation" = "Willing to \ndonate data",
       "Started_donation" = "Started donation",
       "Donated_DDP" = "DDP received"
     )
   ))
 
-### Figure 1. Data donation participation rate
-df_summary %>%
-  filter(Type == "Full sample") %>%
-  ggplot(aes(
-    x = reorder(Variable,-Percentage),
-    y = Percentage,
-    fill = Percentage
-  )) +
-  geom_bar(stat = "identity") +
-  geom_text(
-    aes(label = paste0(round(Percentage * 100), "%")),
-    vjust = -0.5,
-    size = 3,
-    color = "black"
-  ) +
-  geom_text(
-    aes(label = Count),
-    vjust = 1.5,
-    size = 3,
-    color = "black"
-  ) +
-  scale_fill_gradient(low = "steelblue1", high = "steelblue") +
-  scale_y_continuous(labels = scales::percent_format(scale = 100),
-                     limits = c(0, 1)) +
-  labs(x = NULL, y = NULL, title = NULL) +
-  theme_classic() +
-  theme(legend.position = "none")
-
-#### Save figure
-ggsave(
-  "Figure_1.jpg",
-  last_plot(),
-  width = 7.62,
-  height = 3.41,
-  dpi = 300
-)
-
-### Participation by type of health data
-#### Willingness by type of health data (conditional on being asked)
-addmargins(table(df$any_willing, df$what_willing_na))
-prop.table(table(df$any_willing, df$what_willing_na), 2)
-
-#### Data donation started by type of health data
-addmargins(table(df$started_donation, df$what_willing_na))
-
-##### Conditional on being asked
-prop.table(table(df$started_donation, df$what_willing_na), 2)
-
-##### Conditional on reporting willingness
-prop.table(table(df$started_donation[df$any_willing == "Yes"], df$what_willing_na[df$any_willing == "Yes"]), 2)
-
-#### DDP available by type of health data
-addmargins(table(df$DDP_available, df$what_willing_na))
-
-##### Conditional on being asked
-prop.table(table(df$DDP_available, df$what_willing_na), 2)
-
-##### Conditional on starting donation
-prop.table(table(df$DDP_available[df$started_donation == "Yes"], df$what_willing_na[df$started_donation == "Yes"]), 2) 
-
-### Figure 2. Data donation participation rates by type of data requested
+### Create figure
 df_summary %>%
   filter(
     Type != "Full sample" &
@@ -558,7 +456,7 @@ ggsave(
 )
 
 ## Do iPhone/Android smartphone owners differ from non-owners?
-### Logistic regression predicting successful donation (Table 1)
+### Logistic regression predicting successful donation (Table C1)
 m1 <- glm(
   smart_iphoneandroid ~
     gender +
@@ -568,19 +466,25 @@ m1 <- glm(
     employ3 +
     income +
     educ3 +
-    privacy_num +
-    private_location_num +
-    private_travel_num +
-    private_PA_num +
-    private_health_num +
-    trust_marketresearch_num +
-    trust_scientist_num +
-    trust_government_num +
-    trust_cbs_num +
-    trust_apps_num +
-    trust_onlinestores_num +
-    trust_socialmedia_num +
-    trust_bigtech_num,
+    privacy_fac +
+    private_location_fac +
+    private_travel_fac +
+    private_PA_fac +
+    private_health_fac +
+    trust_pub_index +
+    trust_priv_index +
+    chronic +
+    srh3 +
+    bmi3 +
+    lim_index +
+    diff_index +
+    days_mod_physical_act_num +
+    days_stren_physical_act_num +
+    days_walking_num +
+    days_running_num +
+    days_biking_num +
+    outdoors +
+    h_sedentary,
   family = binomial(link = "logit"),
   df
 )
@@ -588,12 +492,48 @@ summary(m1)
 PseudoR2(m1, which = NULL)
 round(exp(cbind(OR = coef(m1), confint(m1))), digits = 2)
 
+#### Create function to save ORs, CIs, and p-values in a table
+create_OR_table <- function(model, filename) {
+  # Get summary and coefficient table
+  summary_model <- summary(model)
+  coeff_table <- summary_model$coefficients
+  
+  # Extract p-values
+  p_values <- round(coeff_table[, "Pr(>|z|)"], 3)
+  
+  # Compute OR and CI using profile likelihood
+  or_ci <- round(exp(cbind(OR = coef(model), confint(model))), 2)
+  
+  # Format OR (CI) as string
+  or_ci_str <- paste0(
+    formatC(or_ci[, "OR"], format = "f", digits = 2),
+    " (",
+    formatC(or_ci[, "2.5 %"], format = "f", digits = 2),
+    " – ",
+    formatC(or_ci[, "97.5 %"], format = "f", digits = 2),
+    ")"
+  )
+  
+  # Combine into data frame
+  result_df <- data.frame(
+    Variable = rownames(coeff_table),
+    OR_CI = or_ci_str,
+    P_value = p_values,
+    row.names = NULL
+  )
+  
+  # Write to CSV
+  write.table(result_df, file = filename, row.names = FALSE, sep = ";")
+}
+
+create_OR_table(m1, "m1.csv")
+
 ### Do willing differ from non-willing? (conditional on being asked for willingness)
-### Create data frame with only those asked for willingness
+#### Create data frame with only those asked for willingness
 df_asked <- df %>% 
   filter(asked_willing == "Willingness question asked")
 
-### Logistic regression predicting successful donation (Table 2)
+#### Logistic regression predicting successful donation (Table C2)
 m2 <- glm(
   any_willing ~
     gender +
@@ -603,19 +543,25 @@ m2 <- glm(
     employ3 +
     income +
     educ3 +
-    privacy_num +
-    private_location_num +
-    private_travel_num +
-    private_PA_num +
-    private_health_num +
-    trust_marketresearch_num +
-    trust_scientist_num +
-    trust_government_num +
-    trust_cbs_num +
-    trust_apps_num +
-    trust_onlinestores_num +
-    trust_socialmedia_num +
-    trust_bigtech_num +
+    privacy_fac +
+    private_location_fac +
+    private_travel_fac +
+    private_PA_fac +
+    private_health_fac +
+    trust_pub_index +
+    trust_priv_index +
+    chronic +
+    srh3 +
+    bmi3 +
+    lim_index +
+    diff_index +
+    days_mod_physical_act_num +
+    days_stren_physical_act_num +
+    days_walking_num +
+    days_running_num +
+    days_biking_num +
+    outdoors +
+    h_sedentary +
     smart_act_no +
     what_willing_na +
     ShowExample,
@@ -625,13 +571,14 @@ m2 <- glm(
 summary(m2)
 PseudoR2(m2)
 round(exp(cbind(OR = coef(m2), confint(m2))), digits = 2)
+create_OR_table(m2, "m2.csv")
 
 ## Do donation starters differ from non-starters? (conditional on willingness)
 ### Create data frame with only those who reported willingness
 df_willing <- df %>% 
   filter(any_willing == "Yes")
 
-### Logistic regression predicting start of donation (Table 3)
+### Logistic regression predicting start of donation (Table C3)
 m3 <- glm(
   started_donation ~
     gender +
@@ -641,19 +588,25 @@ m3 <- glm(
     employ3 +
     income +
     educ3 +
-    privacy_num +
-    private_location_num +
-    private_travel_num +
-    private_PA_num +
-    private_health_num +
-    trust_marketresearch_num +
-    trust_scientist_num +
-    trust_government_num +
-    trust_cbs_num +
-    trust_apps_num +
-    trust_onlinestores_num +
-    trust_socialmedia_num +
-    trust_bigtech_num +
+    privacy_fac +
+    private_location_fac +
+    private_travel_fac +
+    private_PA_fac +
+    private_health_fac +
+    trust_pub_index +
+    trust_priv_index +
+    chronic +
+    srh3 +
+    bmi3 +
+    lim_index +
+    diff_index +
+    days_mod_physical_act_num +
+    days_stren_physical_act_num +
+    days_walking_num +
+    days_running_num +
+    days_biking_num +
+    outdoors +
+    h_sedentary +
     smart_act_no +
     what_willing_na +
     ShowExample,
@@ -663,13 +616,14 @@ m3 <- glm(
 summary(m3)
 PseudoR2(m3, which = NULL)
 round(exp(cbind(OR = coef(m3), confint(m3))), digits = 2)
+create_OR_table(m3, "m3.csv")
 
 ## Do donors differ from non-donors? (conditional on start of data donation) 
 ### Create data frame with only those who started donation
 df_starters <- df %>% 
   filter(started_donation == "Yes")
 
-### Logistic regression predicting successful donation (Table 4)
+### Logistic regression predicting successful donation (Table C4)
 m4 <- glm(
   DDP_available ~
     gender +
@@ -679,19 +633,25 @@ m4 <- glm(
     employ3 +
     income +
     educ3 +
-    privacy_num +
-    private_location_num +
-    private_travel_num +
-    private_PA_num +
-    private_health_num +
-    trust_marketresearch_num +
-    trust_scientist_num +
-    trust_government_num +
-    trust_cbs_num +
-    trust_apps_num +
-    trust_onlinestores_num +
-    trust_socialmedia_num +
-    trust_bigtech_num +
+    privacy_fac +
+    private_location_fac +
+    private_travel_fac +
+    private_PA_fac +
+    private_health_fac +
+    trust_pub_index +
+    trust_priv_index +
+    chronic +
+    srh3 +
+    bmi3 +
+    lim_index +
+    diff_index +
+    days_mod_physical_act_num +
+    days_stren_physical_act_num +
+    days_walking_num +
+    days_running_num +
+    days_biking_num +
+    outdoors +
+    h_sedentary +
     smart_act_no +
     what_willing_na +
     ShowExample,
@@ -701,6 +661,7 @@ m4 <- glm(
 summary(m4)
 PseudoR2(m4, which = NULL)
 round(exp(cbind(OR = coef(m4), confint(m4))), digits = 2)
+create_OR_table(m4, "m4.csv")
 
 ## Bias calculation
 ### Create data frame with only those who donated and one with only those who did not donate
@@ -710,29 +671,33 @@ df_nondonors <- df %>%
   filter(DDP_available != "Yes")
 
 ### List of variable to calculate bias
-categorical_variables <- c("chronic",
+categorical_variables <- c("gender",
+                           "age_groups",
+                           "hh_size",
+                           "urban",
+                           "employ3",
+                           "income",
+                           "educ3",
+                           "privacy_fac",
+                           "private_location_fac",
+                           "private_travel_fac",
+                           "private_PA_fac",
+                           "private_health_fac",
+                           "trust_pub_ter",
+                           "trust_priv_ter",
+                           "chronic",
                            "srh3",
-                           "bmi2",
-                           "lim_daily_act2",
-                           "lim_social_act2",
-                           "lim_work2",
-                           "diff_100m2",
-                           "diff_aboveshoulder2",
-                           "diff_allfours2",
-                           "diff_getup2",
-                           "diff_lifting2",
-                           "diff_movingobjects2",
-                           "diff_multflights2",
-                           "diff_oneflight2",
-                           "diff_pickup2",
-                           "diff_sitting2",
-                           "days_mod_physical_act2",
-                           "days_stren_physical_act2",
-                           "days_walking2",
-                           "days_running2",
-                           "days_biking2",
+                           "bmi3",
+                           "lim_ter",
+                           "diff_ter",
+                           "days_mod_physical_act_ter",
+                           "days_stren_physical_act_ter",
+                           "days_walking_ter",
+                           "days_running_ter",
+                           "days_biking_ter",
                            "outdoors",
-                           "h_sedentary2")
+                           "h_sedentary_ter",
+                           "smart_act_no_ter")
 
 ### Initialize an empty data frame to store results
 bias <- data.frame(variable = character(),
@@ -804,49 +769,116 @@ for (variable in categorical_variables) {
 }
 
 #### Print the final results data frame
-print(bias)
+View(bias)
 
 ### Calculate bias
 bias <- bias %>% 
   mutate(bias = (share_df_donors - share_df)*100,
          se = (((n_df - n_df_donors) / n_df)*sqrt(var_df_donors + var_df_nondonors))*100,
          CI_up = bias + 1.96*se,
-         CI_low = bias - 1.96*se) %>% 
-  filter(category == "Yes" |
-           category == "Without any trouble" |
-           category == "Not at all" |
-           category == "Above median" |
-           variable == "srh3")
+         CI_low = bias - 1.96*se)
 
 bias <- bias %>% 
   mutate(item = factor(paste(variable, category, sep = ":")))
 
 level_changes_bias <- c(
+  "gender:Female" = "Female",
+  "gender:Male" = "Male",
+  "age_groups:50-54 years" = "50-54 years",
+  "age_groups:55-59 years" = "55-59 years",
+  "age_groups:60-64 years" = "60-64 years",
+  "age_groups:65-69 years" = "64-69 years",
+  "age_groups:70-74 years" = "70-74 years",
+  "age_groups:75-79 years" = "74-79 years",
+  "age_groups:80 years or older" = "80 years and older",
+  "hh_size:One person HH" = "One person HH",
+  "hh_size:Two person HH" = "Two person HH",
+  "hh_size:Three and more person HH" = "Three and more person HH",
+  "urban:Not urban" = "Not urban",
+  "urban:Little urban" = "Little urban",
+  "urban:Moderately urban" = "Moderately urban",
+  "urban:Strongly urban" = "Strongly urban",
+  "urban:Very strongly urban" = "Very strongly urban",
+  "employ3:Employed for pay" = "Employed for pay",
+  "employ3:Unpaid work, incl. housework" = "Unpaid work, incl. housework",
+  "employ3:Unemployed/Retired/Disabled" = "Unemployed/Retired/Disabled",
+  "income:EUR 1000 or less" = "EUR 1000 or less",
+  "income:EUR 1001 to EUR 1500" = "EUR 1001 to EUR 1500",
+  "income:EUR 1501 to EUR 2000" = "EUR 1501 to EUR 2000",
+  "income:EUR 2001 to EUR 2500" = "EUR 2001 to EUR 2500",
+  "income:EUR 2501 to EUR 3000" = "EUR 2501 to EUR 3000",
+  "income:More than EUR 3000" = "More than EUR 3000",
+  "income:No income/NA" = "No income/NA",
+  "educ3:Low" = "Low educational attainment",
+  "educ3:Medium" = "Medium educational attainment",
+  "educ3:High" = "High educational attainment",
+  "privacy_fac:Not concerned at all" = "General privacy: Not concerned at all",
+  "privacy_fac:Not very concerned" = "General privacy: Not very concerned",
+  "privacy_fac:A little concerned" = "General privacy: A little concerned",
+  "privacy_fac:Very concerned" = "General privacy: Very concerned",
+  "private_location_fac:1 Not private at all" = "Current location data: 1 Not private at all",
+  "private_location_fac:2" = "Current location data: 2",
+  "private_location_fac:3" = "Current location data: 3",
+  "private_location_fac:4" = "Current location data: 4",
+  "private_location_fac:5 Very private" = "Current location data: 5 Very private",
+  "private_travel_fac:1 Not private at all" = "Daily travel behavior data: 1 Not private at all",
+  "private_travel_fac:2" = "Daily travel behavior  data: 2",
+  "private_travel_fac:3" = "Daily travel behavior  data: 3",
+  "private_travel_fac:4" = "Daily travel behavior  data: 4",
+  "private_travel_fac:5 Very private" = "Daily travel behavior  data: 5 Very private",
+  "private_PA_fac:1 Not private at all" = "PA data: 1 Not private at all",
+  "private_PA_fac:2" = "PA data: 2",
+  "private_PA_fac:3" = "PA data: 3",
+  "private_PA_fac:4" = "PA data: 4",
+  "private_PA_fac:5 Very private" = "PA data: 5 Very private",
+  "private_health_fac:1 Not private at all" = "Personal health data: 1 Not private at all",
+  "private_health_fac:2" = "Personal health data: 2",
+  "private_health_fac:3" = "Personal health data: 3",
+  "private_health_fac:4" = "Personal health data: 4",
+  "private_health_fac:5 Very private" = "Personal health data: 5 Very private",
+  "trust_pub_ter:low" = "Trust in government and reserch organizations: Low",
+  "trust_pub_ter:medium" = "Trust in government and reserch organizations: Medium",
+  "trust_pub_ter:high" = "Trust in government and reserch organizations: High",
+  "trust_priv_ter:low" = "Trust in technology companies: Low",
+  "trust_priv_ter:medium" = "Trust in technology companies: Medium",
+  "trust_priv_ter:high" = "Trust in technology companies: High",
   "chronic:Yes" = "Chronic illness: Yes",
+  "chronic:No" = "Chronic illness: No",
   "srh3:Bad/Moderate" = "Self-rated health: Moderate/Bad",
   "srh3:Good" = "Self-rated health: Good",
   "srh3:Very good/Excellent" = "Self-rated health: Excellent/Very Good",
-  "bmi2:Above median" = "BMI: Above median",
-  "lim_daily_act2:Not at all" = "Daily activities: Not at all limited",
-  "lim_social_act2:Not at all" = "Social activities: Not at all limited",
-  "lim_work2:Not at all" = "Work: Not at all limited",
-  "diff_100m2:Without any trouble" = "Walking 100m: Without any trouble",
-  "diff_aboveshoulder2:Without any trouble" = "Reaching above shoulder: Without any trouble",
-  "diff_allfours2:Without any trouble" = "Crouching, kneeling, crawling: Without any trouble",
-  "diff_getup2:Without any trouble" = "Getting up from chair: Without any trouble",
-  "diff_lifting2:Without any trouble" = "Lifting/carrying 5 kilos: Without any trouble",
-  "diff_movingobjects2:Without any trouble" = "Moving large objects: Without any trouble",
-  "diff_multflights2:Without any trouble" = "Walking up staircase: Without any trouble",
-  "diff_oneflight2:Without any trouble" = "Walking several stairs: Without any trouble",
-  "diff_pickup2:Without any trouble" = "Picking up small coin: Without any trouble",
-  "diff_sitting2:Without any trouble" = "Sitting for 2hs: Without any trouble",
-  "days_mod_physical_act2:Above median" = "Days with moderate physical activity: Above median",
-  "days_stren_physical_act2:Above median" = "Days with strenuous physical activity: Above median",
-  "days_walking2:Above median" = "Days walking: Above median",
-  "days_running2:Above median" = "Days running: Above median",
-  "days_biking2:Above median" = "Days biking: Above median",
-  "outdoors:Yes" = "Spending time outdoors yesterda: Yes",
-  "h_sedentary2:Above median" = "Time sedentary: Above median")
+  "bmi3:Underweight/Healthy weight" = "Underweight/Healthy weight",
+  "bmi3:Overweight" = "Overweight",
+  "bmi3:Obesity" = "Obesity",
+  "lim_ter:low" = "Limited in activities: Low",
+  "lim_ter:medium" = "Limited in activities: Medium",
+  "lim_ter:high" = "Limited in activities: High",
+  "diff_ter:low" = "Difficulties with tasks: Low",
+  "diff_ter:medium" = "Difficulties with tasks: Medium",
+  "diff_ter:high" = "Difficulties with tasks: High",
+  "days_mod_physical_act_ter:low" = "Days with moderate physical activity: Low",
+  "days_mod_physical_act_ter:medium" = "Days with moderate physical activity: Medium",
+  "days_mod_physical_act_ter:high" = "Days with moderate physical activity: High",
+  "days_stren_physical_act_ter:low" = "Days with strenuous physical activity: Low",
+  "days_stren_physical_act_ter:medium" = "Days with strenuous physical activity: Medium",
+  "days_stren_physical_act_ter:high" = "Days with strenuous physical activity: High",
+  "days_walking_ter:low" = "Days with walking: Low",
+  "days_walking_ter:medium" = "Days with walking: Medium",
+  "days_walking_ter:high" = "Days with walking: High",
+  "days_running_ter:low" = "Days with running: Low",
+  "days_running_ter:medium" = "Days with running: Medium",
+  "days_running_ter:high" = "Days with running: High",
+  "days_biking_ter:low" = "Days with biking: Low",
+  "days_biking_ter:medium" = "Days with biking: Medium",
+  "days_biking_ter:high" = "Days with biking: High",
+  "outdoors:Yes" = "Spending time outdoors yesterday: Yes",
+  "outdoors:No" = "Spending time outdoors yesterday: No",
+  "h_sedentary_ter:low" = "Time sedentary: Low",
+  "h_sedentary_ter:medium" = "Time sedentary: Medium",
+  "h_sedentary_ter:high" = "Time sedentary: High",
+  "smart_act_no_ter:low" = "Smartphone activities: Low",
+  "smart_act_no_ter:medium" = "Smartphone activities: Medium",
+  "smart_act_no_ter:high" = "Smartphone activities: High")
 
 bias <- bias %>%
   mutate(item = factor(item)) %>% 
@@ -854,36 +886,132 @@ bias <- bias %>%
   mutate(item = factor(
     item,
     levels = c(
-      "Self-rated health: Excellent/Very Good",
-      "Self-rated health: Good",
-      "Self-rated health: Moderate/Bad",
-      "Chronic illness: Yes",
-      "BMI: Above median",
-      "Daily activities: Not at all limited",
-      "Social activities: Not at all limited",
-      "Work: Not at all limited",
-      "Walking 100m: Without any trouble",
-      "Reaching above shoulder: Without any trouble",
-      "Crouching, kneeling, crawling: Without any trouble",
-      "Getting up from chair: Without any trouble",
-      "Lifting/carrying 5 kilos: Without any trouble",
-      "Moving large objects: Without any trouble",
-      "Walking up staircase: Without any trouble",
-      "Walking several stairs: Without any trouble",
-      "Picking up small coin: Without any trouble",
-      "Sitting for 2hs: Without any trouble",
-      "Days with moderate physical activity: Above median",
-      "Days with strenuous physical activity: Above median",
-      "Days walking: Above median",
-      "Days running: Above median",
-      "Days biking: Above median",
-      "Time sedentary: Above median",
-      "Spending time outdoors yesterda: Yes"
+      "Female",
+  "Male",
+  "50-54 years",
+  "55-59 years",
+  "60-64 years",
+  "64-69 years",
+  "70-74 years",
+  "74-79 years",
+  "80 years and older",
+  "One person HH",
+  "Two person HH",
+  "Three and more person HH",
+  "Not urban",
+  "Little urban",
+  "Moderately urban",
+  "Strongly urban",
+  "Very strongly urban",
+  "Employed for pay",
+  "Unpaid work, incl. housework",
+  "Unemployed/Retired/Disabled",
+  "EUR 1000 or less",
+  "EUR 1001 to EUR 1500",
+  "EUR 1501 to EUR 2000",
+  "EUR 2001 to EUR 2500",
+  "EUR 2501 to EUR 3000",
+  "More than EUR 3000",
+  "No income/NA",
+  "Low educational attainment",
+  "Medium educational attainment",
+  "High educational attainment",
+  "General privacy: Not concerned at all",
+  "General privacy: Not very concerned",
+  "General privacy: A little concerned",
+  "General privacy: Very concerned",
+  "Current location data: 1 Not private at all",
+  "Current location data: 2",
+  "Current location data: 3",
+  "Current location data: 4",
+  "Current location data: 5 Very private",
+  "Daily travel behavior data: 1 Not private at all",
+  "Daily travel behavior  data: 2",
+  "Daily travel behavior  data: 3",
+  "Daily travel behavior  data: 4",
+  "Daily travel behavior  data: 5 Very private",
+  "PA data: 1 Not private at all",
+  "PA data: 2",
+  "PA data: 3",
+  "PA data: 4",
+  "PA data: 5 Very private",
+  "Personal health data: 1 Not private at all",
+  "Personal health data: 2",
+  "Personal health data: 3",
+  "Personal health data: 4",
+  "Personal health data: 5 Very private",
+  "Trust in government and reserch organizations: Low",
+  "Trust in government and reserch organizations: Medium",
+  "Trust in government and reserch organizations: High",
+  "Trust in technology companies: Low",
+  "Trust in technology companies: Medium",
+  "Trust in technology companies: High",
+  "Chronic illness: Yes",
+  "Chronic illness: No",
+  "Self-rated health: Excellent/Very Good",
+  "Self-rated health: Good",
+  "Self-rated health: Moderate/Bad",
+  "Underweight/Healthy weight",
+  "Overweight",
+  "Obesity",
+  "Limited in activities: Low",
+  "Limited in activities: Medium",
+  "Limited in activities: High",
+  "Difficulties with tasks: Low",
+  "Difficulties with tasks: Medium",
+  "Difficulties with tasks: High",
+  "Days with moderate physical activity: Low",
+  "Days with moderate physical activity: Medium",
+  "Days with moderate physical activity: High",
+  "Days with strenuous physical activity: Low",
+  "Days with strenuous physical activity: Medium",
+  "Days with strenuous physical activity: High",
+  "Days with walking: Low",
+  "Days with walking: Medium",
+  "Days with walking: High",
+  "Days with running: Low",
+  "Days with running: Medium",
+  "Days with running: High",
+  "Days with biking: Low",
+  "Days with biking: Medium",
+  "Days with biking: High",
+  "Spending time outdoors yesterday: Yes",
+  "Spending time outdoors yesterday: No",
+  "Time sedentary: Low",
+  "Time sedentary: Medium",
+  "Time sedentary: High",
+  "Smartphone activities: Low",
+  "Smartphone activities: Medium",
+  "Smartphone activities: High"
     )
   ))
 
-### Figure 3. Bias in health- and PA-related measures between donors and the full sample 
-ggplot(bias, aes(x = bias, y = fct_rev(item))) +
+### Create and save table with bias and CIs (Table C5)
+bias$CI <- paste0(
+  formatC(round(bias$CI_low, 1), format = "f", digits = 1),
+  " – ",
+  formatC(round(bias$CI_up, 1), format = "f", digits = 1)
+)
+
+bias$bias_round <- case_when(
+  bias$bias > 0 ~ paste0("+", formatC(round(bias$bias, 1), format = "f", digits = 1)),
+  bias$bias < 0 ~ formatC(round(bias$bias, 1), format = "f", digits = 1)
+)
+
+write.table(bias %>% 
+              select(item, bias_round, CI),
+            file = "bias.csv", row.names = FALSE, sep = ";")
+
+### Figure 3. Bias in sociodemographic measures between donors and the full sample 
+bias_soc <- bias %>%
+  filter(variable == "gender" |
+           variable == "age_groups" |
+           variable == "hh_size" |
+           variable == "urban" |
+           variable == "employ3" |
+           variable == "income" |
+           variable == "educ3") %>% 
+  ggplot(aes(x = bias, y = fct_rev(item))) +
   geom_point() +  # Plot bias as points
   geom_errorbarh(aes(xmin = CI_low, xmax = CI_up), height = 0.2) +  # Horizontal error bars
   geom_vline(xintercept = 0, linetype = "dashed", color = "red") +  # Vertical line at 0
@@ -892,10 +1020,83 @@ ggplot(bias, aes(x = bias, y = fct_rev(item))) +
 
 ### Save figure
 ggsave(
-  "Figure_Bias.jpg",
+  "Figure_Bias_Soc.jpg",
   last_plot(),
   width = 5,
   height = 5,
+  dpi = 300
+)
+
+### Figure 4. Bias in privacy and trust measures between donors and the full sample 
+bias_priv_trust <- bias %>%
+  filter(variable == "privacy_fac" |
+           variable == "private_location_fac" |
+           variable == "private_travel_fac" |
+           variable == "private_PA_fac" |
+           variable == "private_health_fac" |
+           variable == "trust_pub_ter" |
+           variable == "trust_priv_ter") %>% 
+  ggplot(aes(x = bias, y = fct_rev(item))) +
+  geom_point() +  # Plot bias as points
+  geom_errorbarh(aes(xmin = CI_low, xmax = CI_up), height = 0.2) +  # Horizontal error bars
+  geom_vline(xintercept = 0, linetype = "dashed", color = "red") +  # Vertical line at 0
+  theme_minimal() +  # Use a minimal theme
+  labs(x = "Bias (in percentage points)", y = "")
+
+### Save figure
+ggsave(
+  "Figure_Bias_Priv_Trust.jpg",
+  last_plot(),
+  width = 5,
+  height = 5,
+  dpi = 300
+)
+
+### Figure 5. Bias in health-related measures between donors and the full sample 
+bias_health <- bias %>%
+  filter(variable == "chronic" |
+           variable == "srh3" |
+           variable == "bmi3" |
+           variable == "lim_ter" |
+           variable == "diff_ter") %>% 
+  ggplot(aes(x = bias, y = fct_rev(item))) +
+  geom_point() +  # Plot bias as points
+  geom_errorbarh(aes(xmin = CI_low, xmax = CI_up), height = 0.2) +  # Horizontal error bars
+  geom_vline(xintercept = 0, linetype = "dashed", color = "red") +  # Vertical line at 0
+  theme_minimal() +  # Use a minimal theme
+  labs(x = "Bias (in percentage points)", y = "")
+
+### Save figure
+ggsave(
+  "Figure_Bias_Health.jpg",
+  last_plot(),
+  width = 5,
+  height = 2.75,
+  dpi = 300
+)
+
+### Figure 6. Bias in PA measures between donors and the full sample 
+bias_trust <- bias %>%
+  filter(variable == "days_mod_physical_act_ter" |
+           variable == "days_stren_physical_act_ter" |
+           variable == "days_walking_ter" |
+           variable == "days_running_ter" |
+           variable == "days_biking_ter" |
+           variable == "outdoors" |
+           variable == "h_sedentary_ter") %>% 
+  ggplot(aes(x = bias, y = fct_rev(item))) +
+  geom_point() +  # Plot bias as points
+  geom_errorbarh(aes(xmin = CI_low, xmax = CI_up), height = 0.2) +  # Horizontal error bars
+  geom_vline(xintercept = 0, linetype = "dashed", color = "red") +  # Vertical line at 0
+  theme_minimal() +  # Use a minimal theme
+  labs(x = "Bias (in percentage points)", y = "")
+
+### Save figure
+ggsave(
+  "Figure_Bias_PA.jpg",
+  last_plot(),
+  width = 5,
+  height = 4,
   dpi = 300
 )
 ```
