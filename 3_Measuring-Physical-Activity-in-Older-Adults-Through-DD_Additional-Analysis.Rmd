@@ -1,0 +1,369 @@
+---
+title: "Measuring Physical Activity in Older Adults through Data Donation: Consent Rates, Donation Success, & Bias"
+author: "Florian Keusch"
+date: "2025-08-08"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+subtitle: Additional analysis
+---
+
+Run Measuring-Physical-Activity-in-Older-Adults-Through-DD_1_Data-Preparation.Rmd first!
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "U:\\Mannheim\\Grants\\NIMLAS\\Data")
+```
+
+# Install and load required packages
+```{r, warning=FALSE, message=FALSE}
+if (!require(haven)) install.packages("haven")
+library(haven)
+
+if (!require(dplyr)) install.packages("dplyr")
+library(dplyr)
+
+if (!require(psych)) install.packages("psych")
+library(psych)
+
+if (!require(DescTools)) install.packages("DescTools")
+library(DescTools)
+```
+
+# Load data
+```{r}
+## Load net sample data set
+load("df.RData")
+
+## Load gross sample data set (only available directly from LISS staff - not in public LISS repository)
+df_gross1 <- read_sav("Sample_split1_202401.sav") 
+df_gross2 <- read_sav("Sample_split2_202403.sav")
+```
+
+# Merge data
+```{r}
+## Two gross samples
+df_gross <- rbind(df_gross1, df_gross2)
+
+## Add indicator variables for net sample
+df <- df %>% 
+  mutate(net = 1)
+
+## Merge gross and net sample
+df_gross <- merge(df_gross, df, by="nomem_encr", all.x = T)
+```
+
+# Recoding 
+```{r echo=FALSE}
+## Create variable in gross sample for net sample
+df_gross <- df_gross %>% 
+  mutate(net = factor(case_when(net == 1 ~ "Yes",
+                                .default = "No"),
+                      levels = c("Yes", "No")))
+
+summary(df_gross$net)
+
+## Gender
+df_gross <- df_gross %>%
+  mutate(gender = factor(
+    case_when((geslacht == 1) ~ "Male",
+              (geslacht == 2) ~ "Female",
+              (geslacht == 3) ~ "Other"
+    ),
+    levels = c("Female", "Male", "Other")
+  ))
+summary(df_gross$gender)
+
+## Age
+summary(df_gross$gebjaar)
+df_gross <- df_gross %>%
+  mutate(age = as.numeric(2023 - gebjaar))
+summary(df_gross$age)
+hist(df_gross$age)
+
+df_gross <- df_gross %>%
+  mutate(age_groups = factor(
+    case_when((age < 55) ~ "50-54 years",
+              (age >= 55 &
+                 age < 60) ~ "55-59 years",
+              (age >= 60 &
+                 age < 65) ~ "60-64 years",
+              (age >= 65 &
+                 age < 70) ~ "65-69 years",
+              (age >= 70 &
+                 age < 75) ~ "70-74 years",
+              (age >= 75 &
+                 age < 80) ~ "75-79 years",
+              (age >= 80) ~ "80 years or older"
+    )
+  ))
+summary(df_gross$age_groups)
+
+## HH size
+summary(df_gross$aantalhh)
+df_gross <- df_gross %>%
+  mutate(hh_size = factor(
+    case_when((aantalhh == 1) ~ "One person HH",
+              (aantalhh == 2) ~ "Two person HH",
+              (aantalhh > 2) ~ "Three and more person HH"
+    ),
+    levels = c("One person HH", "Two person HH",
+               "Three and more person HH")
+  ))
+summary(df_gross$hh_size)
+
+## Urabnicity
+summary(df_gross$sted)
+df_gross <- df_gross %>%
+  mutate(urban = factor(
+    case_when((sted == 1) ~ "Very strongly urban",
+              (sted == 2) ~ "Strongly urban",
+              (sted == 3) ~ "Moderately urban",
+              (sted == 4) ~ "Little urban",
+              (sted == 5) ~ "Not urban",
+              .default = NA
+    ),
+    levels = c(
+      "Not urban",
+      "Little urban",
+      "Moderately urban",
+      "Strongly urban",
+      "Very strongly urban"
+    )
+  ))
+summary(df_gross$urban)
+
+## Employment status
+summary(df_gross$belbezig)
+
+### Create employment variable with only three categories
+df_gross <- df_gross %>%
+  mutate(employ3 = factor(
+    case_when((belbezig >= 1 & belbezig <= 3) ~ "Employed for pay",
+              ((belbezig >= 4 &
+                 belbezig <= 7) |
+                 belbezig == 9 |
+                 belbezig == 10)  ~ "Unemployed/Retired/Disabled",
+              ((belbezig == 8) |
+                 (belbezig >= 11 & belbezig <= 13)) ~
+                "Unpaid work, incl. housework",
+              .default = NA
+    ),
+    levels = c(
+      "Employed for pay",
+      "Unpaid work, incl. housework",
+      "Unemployed/Retired/Disabled"
+    )
+  ))
+summary(df_gross$employ3)
+
+## Personal net income
+summary(df_gross$nettocat)
+hist(df_gross$nettocat)
+df_gross <- df_gross %>%
+  mutate(income = factor(
+    case_when((nettocat == 0 | (is.na(nettocat))) ~ "No income/NA",
+              (nettocat == 1 |
+                 nettocat == 2) ~ "EUR 1000 or less",
+              (nettocat == 3) ~ "EUR 1001 to EUR 1500",
+              (nettocat == 4) ~ "EUR 1501 to EUR 2000",
+              (nettocat == 5) ~ "EUR 2001 to EUR 2500",
+              (nettocat == 6) ~ "EUR 2501 to EUR 3000",
+              (nettocat >= 7 &
+                 nettocat <= 12) ~ "More than EUR 3000"
+    ),
+    levels = c(
+      "EUR 1000 or less",
+      "EUR 1001 to EUR 1500",
+      "EUR 1501 to EUR 2000",
+      "EUR 2001 to EUR 2500",
+      "EUR 2501 to EUR 3000",
+      "More than EUR 3000",
+      "No income/NA"
+    )
+  ))
+summary(df_gross$income)
+
+## Education
+summary(df_gross$oplcat)
+hist(df_gross$oplcat)
+
+### Create education variable with only three categories
+df_gross <- df_gross %>%
+  mutate(educ3 = factor(
+    case_when((oplcat == 1 | oplcat == 2) ~ "Low",
+              (oplcat == 3 |
+                 oplcat == 4) ~ "Medium",
+              (oplcat == 5 |
+                 oplcat == 6) ~ "High",
+              .default = NA
+    ),
+    levels = c("Low", "Medium", "High")
+  ))
+summary(df_gross$educ3)
+
+df_gross <- df_gross %>% 
+  droplevels()
+```
+
+```{r echo=FALSE}
+## Do people who start the survey differ from those who do not? (Table E1)
+m0 <- glm(
+  net ~
+    gender +
+    age_groups +
+    hh_size +
+    urban +
+    employ3 +
+    income +
+    educ3,
+  family = binomial(link = "logit"),
+  df_gross
+)
+summary(m0)
+PseudoR2(m0, which = NULL)
+
+### Create function to save ORs, AMEs, CIs, and p-values in a table
+create_full_model_output_table <- function(model, filename) {
+  # Get ORs and CIs from logistic regression
+  summary_model <- summary(model)
+  coeff_table <- summary_model$coefficients
+  var_order <- rownames(coeff_table)  # <--- store original order
+  
+  p_values_or <- round(coeff_table[, "Pr(>|z|)"], 3)
+  or_ci <- round(exp(cbind(OR = coef(model), confint(model))), 2)
+
+  # Format OR (95% CI) string
+  or_ci_str <- paste0(
+    formatC(or_ci[, "OR"], format = "f", digits = 2),
+    " (",
+    formatC(or_ci[, "2.5 %"], format = "f", digits = 2),
+    " – ",
+    formatC(or_ci[, "97.5 %"], format = "f", digits = 2),
+    ")"
+  )
+
+  # Compute AMEs
+  margins_summary <- summary(margins(model))
+  ame_vars <- margins_summary$factor
+  ame_estimates <- round(margins_summary$AME, 2)
+  ame_lower <- round(margins_summary$lower, 2)
+  ame_upper <- round(margins_summary$upper, 2)
+  ame_pvalues <- round(margins_summary$p, 3)
+
+  # Format AME (95% CI) string
+  ame_ci_str <- paste0(
+    formatC(ame_estimates, format = "f", digits = 2),
+    " (",
+    formatC(ame_lower, format = "f", digits = 2),
+    " – ",
+    formatC(ame_upper, format = "f", digits = 2),
+    ")"
+  )
+
+  # Create OR and AME tables
+  df_or <- data.frame(
+    Variable = var_order,
+    OR_CI = or_ci_str,
+    P_value_OR = p_values_or,
+    stringsAsFactors = FALSE
+  )
+
+  df_ame <- data.frame(
+    Variable = ame_vars,
+    AME_CI = ame_ci_str,
+    P_value_AME = ame_pvalues,
+    stringsAsFactors = FALSE
+  )
+
+  # Merge
+  result_df <- merge(df_or, df_ame, by = "Variable", all = TRUE)
+
+  # Reorder rows to match original regression model order
+  result_df <- result_df[match(var_order, result_df$Variable), ]
+
+  # Write to CSV
+  write.table(result_df, file = filename, row.names = FALSE, sep = ";")
+}
+
+create_full_model_output_table(m0, "m0.csv")
+
+### Calculate predicted probabilities
+df_gross <- df_gross %>% 
+  mutate(predicted_prob = predict(m0, newdata = df_gross, type = "response"))
+
+### Convert them to weights
+df_gross <- df_gross %>%
+  mutate(ipw = (1/predicted_prob))
+
+hist(df_gross$ipw, breaks = 50)
+summary(df_gross$ipw)
+
+### Stabilize weights
+p_response <- mean(df_gross$net == "Yes")
+
+df_gross <- df_gross %>%
+  mutate(ipw_stab = case_when(
+    net == "Yes" ~ p_response / predicted_prob,
+    net == "No" ~ (1 - p_response) / (1 - predicted_prob),
+      TRUE ~ NA_real_
+    )
+  )
+
+hist(df_gross$ipw_stab, breaks = 50)
+summary(df_gross$ipw_stab)
+
+### Trim weights
+df_gross <- df_gross %>%
+  mutate(ipw_trim = pmin(ipw_stab, quantile(ipw_stab, 0.99, na.rm = TRUE)))
+
+hist(df_gross$ipw_trim, breaks = 50)
+summary(df_gross$ipw_trim)
+
+### Normalize weights
+df_gross <- df_gross %>%
+  mutate(ipw_norm = ipw_trim / mean(ipw_trim, na.rm = TRUE))
+
+hist(df_gross$ipw_norm, breaks = 50)
+summary(df_gross$ipw_norm)
+
+## Rerun model M1 (Do iPhone/Android smartphone owners differ from non-owners?) with weights (Table E2)
+df_net <- df_gross %>% 
+  filter(net == "Yes")
+
+m1_adj <- glm(
+  smart_iphoneandroid ~
+    gender +
+    age_groups +
+    hh_size +
+    urban +
+    employ3 +
+    income +
+    educ3 +
+    privacy_fac +
+    private_index +
+    trust_pub_index +
+    trust_priv_index +
+    chronic +
+    srh3 +
+    bmi3 +
+    lim_index +
+    diff_index +
+    days_mod_physical_act_num +
+    days_stren_physical_act_num +
+    days_walking_num +
+    days_running_num +
+    days_biking_num +
+    outdoors +
+    h_sedentary,
+  family = binomial(link = "logit"),
+  data = df_net,
+  weights = ipw_norm
+)
+summary(m1_adj)
+vif(m1_adj)
+PseudoR2(m1_adj, which = NULL)
+
+create_full_model_output_table(m1_adj, "m1_adj.csv")
+```
