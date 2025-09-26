@@ -1,6 +1,6 @@
 # PA_data_donation
 
-Code for Keusch, F. et al. (under review). Measuring physical activity in older adults through data donation: Consent rates, donation success, & bias.
+Code for Keusch, F., Struminskaya, B., Mulder, J., & Jongerius, S. (2025). Measuring physical activity in older adults through data donation: Consent rates, donation success, & bias. Journal of Medical Internet Research, 27:e69799. 10.2196/69799
 
 Run code in the following order:
 
